@@ -1,7 +1,7 @@
 # NAMCS Project general
 Descriptive summaries
  - Age check for extension: checking distribution of ages for each of the 4 types of physicians from 2012 to 2016, to check if we can use age as a proxy variable to classify physicians in the 2018 and 2019 data sets
- - Visit records summary: Descriptive summary of number of nonsurgical visits to physicians in NAMCS data from 1993 to 2019, for children (under 18) and infant (under 1)
+ - Visit records summary: Descriptive summary of number of nonsurgical visits to physicians in NAMCS data from 1993 to 2019, for children (under 18) and infants (under 1)
 
 General time series
  - Under 1: Time series for infants (under 1), from 1993 to 2016 (original) and 1993 to 2019 (extended)
