@@ -1,0 +1,691 @@
+---
+title: "reg generalists"
+output:
+  pdf_document: default
+  html_document: default
+date: '2023-08-03'
+---
+```{r html packages}
+```
+
+```{r import}
+library(haven)
+#import NAMCS stata files from 1993 to 2016 
+import_nam_data <- function(year) {
+  file_path <- paste0("C:/Users/aleong/Desktop/NAMCS/Replication/nam", year, ".dta")
+  data <- read_dta(file_path)
+  return(data)
+}
+
+nam93 <- import_nam_data("93")
+nam94 <- import_nam_data("94")
+nam95 <- import_nam_data("95")
+nam96 <- import_nam_data("96")
+nam97 <- import_nam_data("97")
+nam98 <- import_nam_data("98")
+nam99 <- import_nam_data("99")
+nam00 <- import_nam_data("00")
+nam01 <- import_nam_data("01")
+nam02 <- import_nam_data("02")
+nam03 <- import_nam_data("03")
+nam04 <- import_nam_data("04")
+nam05 <- import_nam_data("05")
+nam06 <- import_nam_data("06")
+nam07 <- import_nam_data("07")
+nam08 <- import_nam_data("08")
+nam09 <- import_nam_data("09")
+nam10 <- import_nam_data("10")
+nam11 <- import_nam_data("11")
+nam12 <- import_nam_data("12")
+nam13 <- import_nam_data("13")
+nam14 <- import_nam_data("14")
+nam15 <- import_nam_data("15")
+nam16 <- import_nam_data("16")
+```
+
+```{r data management}
+#under18
+data_frame_names <- c("nam93", "nam94", "nam95", "nam96", "nam97", "nam98", "nam99", "nam00", "nam01", "nam02", "nam03", "nam04", "nam05", "nam06",
+                      "nam07", "nam08", "nam09", "nam10", "nam11", "nam12", "nam13", "nam14",
+                      "nam15", "nam16")
+for (df_name in data_frame_names) {
+  df <- get(df_name) 
+  colnames(df) <- toupper(colnames(df))  # Convert column names to uppercase
+  assign(df_name, df, envir = .GlobalEnv)  
+}
+
+for (df_name in data_frame_names) {
+  df <- get(df_name) 
+  df <- df[df$AGE <18, ] #only include observations where patient age <18
+  #df <- df[df$AGE <1, ] #only include observations where patient age <1
+  assign(df_name, df, envir = .GlobalEnv) 
+}
+
+"Also, prior to 2006, (i.e. before CHCs were sampled as a separate stratum), physicians who were sampled from the master files of the American Medical Association 
+or American Osteopathic Association but who saw patients in CHCs were not excluded nor were their CHC visits excluded from survey eligibility.
+For that reason, in all previous years, it is possible to have at least some (albeit generally a very small percentage of) CHC visits in the data. 
+This is not the case beginning in 2012 when there are no CHC visits on the file."
+
+"To compare 2012 data with previous years of NAMCS data, it is necessary to restrict one's 
+analysis to non-CHC visits prior to 2012. This can be done by using the RETYPOFF variable 
+(Type of office setting for this visit) and excluding category 3 for community health centers"
+
+#remove CHCs from 2006 to 2011 data sets [RETYPOFF == 3]
+library(summarytools)
+dataset_names_RETYPOFF <- list("nam06",
+                              "nam07", "nam08", "nam09", "nam10", "nam11")
+
+for (name in dataset_names_RETYPOFF) {
+  assign(name, get(name)[get(name)$RETYPOFF != 3, ])
+}
+
+for (name in dataset_names_RETYPOFF) {
+  cat("Frequency table for", name, ":\n")
+  print(table(get(name)$RETYPOFF))
+  cat("\n")
+} # check frequency tables 
+
+data_frames <- list(nam93, nam94, nam95, nam96, nam97, nam98, nam99, nam00, nam01, nam02, nam03, nam04, nam05, nam06, nam07, nam08, nam09,
+                    nam10, nam11, nam12, nam13, nam14, nam15, nam16)
+variable <- "SPECR" #check with SPECR (all), SPECCAT (nam05 onwards only), CPSUM & CSTRATM (nam02 onwards only), PATWT (all)
+for (i in seq_along(data_frames)) {
+  if (exists(variable, where = data_frames[[i]])) {
+    print(paste("Variable", variable, "is present in data frame", i))
+  } else {
+    print(paste("Variable", variable, "is NOT present in data frame", i))
+  }
+}
+#SPECCAT not present for data frames before nam05, CPSUM & CSTRATM not present for data frames before nam02
+#2012: SPECR_14 instead of SPECR
+
+### create CPSUM, CSTRATM variables for data frames before nam02
+data_frame_names_selected <- c("nam93", "nam94", "nam95", "nam96", "nam97", "nam98", "nam99", "nam00", "nam01")
+for (df_name in data_frame_names_selected) {
+  df <- get(df_name)
+  # Assign CSTRATM and CPSUM columns
+  df$CSTRATM <- df$STRATM
+  df$CPSUM <- df$PSUM
+  # Apply ifelse condition to modify CSTRATM
+  df$CSTRATM <- ifelse(df$CPSUM %in% c(1, 2, 3, 4),
+                       (df$STRATM * 100000) + (1000 * (df$YEAR %% 100)) +
+                         (df$SUBFILE * 100) + df$PROSTRAT,
+                       df$STRATM * 100000)
+  # Update the modified data frame in the environment
+  assign(df_name, df, envir = .GlobalEnv)
+}
+
+#singleton elimination (https://www.cdc.gov/nchs/data/ahcd/ultimatecluster.pdf)
+subset_condition_nam96 <- nam96$SUBFILE == 1 & nam96$PROSTRAT == 14 & nam96$YEAR == 1996 & nam96$STRATM == 202
+nam96$CSTRATM <- ifelse(subset_condition_nam96,
+                        (203 * 100000) + (1000 * (nam96$YEAR %% 100)) +
+                          (nam96$SUBFILE * 100) + nam96$PROSTRAT,
+                        nam96$STRATM)
+
+subset_condition_nam99 <- nam99$SUBFILE == 1 & nam99$PROSTRAT == 12 & nam99$YEAR == 1999 & nam99$STRATM == 202
+nam99$CSTRATM <- ifelse(subset_condition_nam99,
+                        (203 * 100000) + (1000 * (nam99$YEAR %% 100)) +
+                          (nam99$SUBFILE * 100) + nam99$PROSTRAT,
+                        nam99$STRATM)
+
+subset_condition_nam00 <- nam00$SUBFILE == 1 & nam00$PROSTRAT == 1 & nam00$YEAR == 2000 & nam00$STRATM == 203
+nam00$CSTRATM <- ifelse(subset_condition_nam00,
+                        (202 * 100000) + (1000 * (nam00$YEAR %% 100)) +
+                          (nam00$SUBFILE * 100) + nam00$PROSTRAT,
+                        nam00$STRATM)
+
+#check that CPSUM, CSTRATM present in all data frames
+data_frames <- list(nam93, nam94, nam95, nam96, nam97, nam98, nam99, nam00, nam01, nam02, nam03, nam04, nam05, nam06, nam07, nam08, nam09,
+                    nam10, nam11, nam12, nam13, nam14, nam15, nam16)
+variable <- "CSTRATM" #check CPSUM & CSTRATM (all present)
+for (i in seq_along(data_frames)) {
+  if (exists(variable, where = data_frames[[i]])) {
+    print(paste("Variable", variable, "is present in data frame", i))
+  } else {
+    print(paste("Variable", variable, "is NOT present in data frame", i))
+  }
+}
+```
+
+```{r creating speccat}
+#creating SPECCAT from SPEC, according to 2005 codebook: https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Dataset_Documentation/NAMCS/doc05.pdf
+
+#function to create SPECCAT for each dataset
+#new function with including omitted categories PH (3), CDS (2) and PS (2)
+speccat_replicate_new <- function(dataset_name) {
+  dataset <- get(dataset_name)
+  list_PRIMCARE <- c("ADL", "AMI", "FP", "FPG", "FSM", "GP", "GYN","IM", "IMG",
+                     "MPD","MFM", "OBG","OBS","PD","PSM")
+  dataset$PRIMCARE <- ifelse(dataset$SPEC %in% list_PRIMCARE, 1, 0)
+  list_SURCARE <-c("AS","OAR","CRS","CS","CFS","OCC","CCS", "DS","ESN","FPS","OFA","GS",
+                   "GO","HS","HSP","HSO","HSS","HNS","OMO","NS","OPH","OMF","OTO","NO",
+                   "ORS","OSS","OTR","PCS","OP","PO","PDO","NSP","PDS","UP","PS","PSH",
+                   "OSM","SO","TS","TTS","TRS","U","VS","CDS","PS")
+  dataset$SURCARE <- ifelse(dataset$SPEC %in% list_SURCARE, 1, 0)
+  
+  list_MEDCARE <- c("A","ADM","ADP","AI","ALI","AM","CBG","CCG","CCM","CCP","CD","CG",
+                    "CMG","CHN","CHP","CN","D","DBP","DDL","DIA","EM","END","EP",
+                    "ESM","ETX","GE","GPM","HEM","HEP","HO","IC","ICE","ID","IG",
+                    "ILI","ISM","LM","MDM","MG","NDN","N","NEP","NPM","NRN","NTR",
+                    "NUP","PHM","OM","OMM","ON","P","PA","PCC","PDA","PDC","PDE",
+                    "PDI","PDP","PDT","PE","PEM","PFP","PG","PHP","PHO","PLI","PLM","PM",
+                    "PMD","PMM","PN","PPR","PRM","PRO","PTX","PUD","PYA","PYG","REN",
+                    "RHU","SCI","SM","UCM","UM","VM","OS","US","PH")
+  dataset$MEDCARE <- ifelse(dataset$SPEC %in% list_MEDCARE, 1, 0)
+  dataset$SPECCAT <- case_when(
+    dataset$PRIMCARE == 1 ~ 1,
+    dataset$SURCARE == 1 ~ 2,
+    dataset$MEDCARE == 1 ~ 3,
+    TRUE ~ NA_integer_
+  )
+  # Return the modified dataset
+  return(dataset)
+}
+
+library(dplyr)
+
+#create SPECCAT for each dataset only for data sets prior to 2005
+nam93_repl <- speccat_replicate_new("nam93")
+nam94_repl <- speccat_replicate_new("nam94")
+nam95_repl <- speccat_replicate_new("nam95")
+nam96_repl <- speccat_replicate_new("nam96")
+nam97_repl <- speccat_replicate_new("nam97")
+nam98_repl <- speccat_replicate_new("nam98")
+nam99_repl <- speccat_replicate_new("nam99")
+nam00_repl <- speccat_replicate_new("nam00")
+nam01_repl <- speccat_replicate_new("nam01")
+nam02_repl <- speccat_replicate_new("nam02")
+nam03_repl <- speccat_replicate_new("nam03")
+nam04_repl <- speccat_replicate_new("nam04")
+
+#checking for NAs in SPECCAT
+
+sum(is.na(nam93_repl$SPECCAT)) #no NAs
+sum(is.na(nam94_repl$SPECCAT)) #no! NAs
+sum(is.na(nam95_repl$SPECCAT)) #no! NAs
+sum(is.na(nam96_repl$SPECCAT)) #no! NAs
+sum(is.na(nam97_repl$SPECCAT)) #no! NAs
+sum(is.na(nam98_repl$SPECCAT)) #no NAs
+sum(is.na(nam99_repl$SPECCAT)) #no NAs
+sum(is.na(nam00_repl$SPECCAT)) #no NAs
+sum(is.na(nam01_repl$SPECCAT)) #no NAs
+sum(is.na(nam02_repl$SPECCAT)) #no NAs
+sum(is.na(nam03_repl$SPECCAT)) #no NAs
+sum(is.na(nam04_repl$SPECCAT)) #no NAs
+```
+
+```{r creating specialty variables}
+### write a function [create_specialty_variables()] to create PEDGEN, NONPEDGEN, PEDSPEC, NONPEDSPEC for any data set
+create_specialty_variables <- function(data) {
+  data <- data[data$SPECCAT != 2, ] #excluding surgical specialties
+  #data_filtered <- data_repl[data$SPECR != 15, ]
+  # PEDGEN: if SPECR == 4 (Pediatrics) and SPECCAT == 1 (Primary care specialty)
+  data$PEDGEN <- ifelse(data$SPECCAT == 1 & data$SPECR == 4, 1, 0)
+  # NONPEDGEN: if SPECR != 4 (Pediatrics) and SPECCAT == 1 (Primary care specialty)
+  data$NONPEDGEN <- ifelse(data$SPECCAT == 1 & data$SPECR != 4, 1, 0)
+  # PEDSPEC: if SPECR == 4 (Pediatrics) and SPECCAT == 3 (Medical care specialty)
+  data$PEDSPEC <- ifelse(data$SPECCAT == 3 & data$SPECR == 4, 1, 0)
+  # NONPEDSPEC: if SPECR != 4 (Pediatrics) and SPECCAT == 3 (Medical care specialty)
+  data$NONPEDSPEC <- ifelse(data$SPECCAT == 3 & data$SPECR != 4, 1, 0)
+  
+  data$PEDGEN <- as.factor(data$PEDGEN)
+  data$NONPEDGEN <- as.factor(data$NONPEDGEN)
+  data$PEDSPEC <- as.factor(data$PEDSPEC)
+  data$NONPEDSPEC <- as.factor(data$NONPEDSPEC)
+  
+  return(data)
+}
+
+#nam12 does not have SPECR but has SPECR_14 and SPECR_17 instead. SPECR_14 uses the methodology that other survey years use. 
+#create a unique create_specialty_variables() function for nam12
+create_specialty_variables_nam12 <- function(data) {
+  data <- data[data$SPECCAT != 2, ]
+  # PEDGEN nam12: if SPECR == 4 (Pediatrics) and SPECCAT == 1 (Primary care specialty)
+  data$PEDGEN <- ifelse(data$SPECCAT == 1 & data$SPECR_14 == 4, 1, 0)
+  # NONPEDGEN nam12: if SPECR != 4 (Pediatrics) and SPECCAT == 1 (Primary care specialty)
+  data$NONPEDGEN <- ifelse(data$SPECCAT == 1 & data$SPECR_14 != 4, 1, 0)
+  # PEDSPEC nam12: if SPECR == 4 (Pediatrics) and SPECCAT == 3 (Medical care specialty)
+  data$PEDSPEC <- ifelse(data$SPECCAT == 3 & data$SPECR_14 == 4, 1, 0)
+  # NONPEDSPEC nam12: if SPECR != 4 (Pediatrics) and SPECCAT == 3 (Medical care specialty)
+  data$NONPEDSPEC <- ifelse(data$SPECCAT == 3 & data$SPECR_14 != 4, 1, 0)
+  
+  data$PEDGEN <- as.factor(data$PEDGEN)
+  data$NONPEDGEN <- as.factor(data$NONPEDGEN)
+  data$PEDSPEC <- as.factor(data$PEDSPEC)
+  data$NONPEDSPEC <- as.factor(data$NONPEDSPEC)
+  
+  return(data)
+}
+
+#applying function on all data sets to generate specialty variables from 1993 to 2016 (PEDGEN, NONPEDGEN,PEDSPEC, NONPEDSPEC)
+nam93_filtered_gen <- create_specialty_variables(nam93_repl) 
+nam94_filtered_gen <- create_specialty_variables(nam94_repl)
+nam95_filtered_gen <- create_specialty_variables(nam95_repl)
+nam96_filtered_gen <- create_specialty_variables(nam96_repl)
+nam97_filtered_gen <- create_specialty_variables(nam97_repl)
+nam98_filtered_gen <- create_specialty_variables(nam98_repl)
+nam99_filtered_gen <- create_specialty_variables(nam99_repl)
+nam00_filtered_gen <- create_specialty_variables(nam00_repl)
+nam01_filtered_gen <- create_specialty_variables(nam01_repl)
+nam02_filtered_gen <- create_specialty_variables(nam02_repl)
+nam03_filtered_gen <- create_specialty_variables(nam03_repl)
+nam04_filtered_gen <- create_specialty_variables(nam04_repl)
+nam05_filtered_gen <- create_specialty_variables(nam05) #nam05 onwards has SPECCAT
+nam06_filtered_gen <- create_specialty_variables(nam06)
+nam07_filtered_gen <- create_specialty_variables(nam07)
+nam08_filtered_gen <- create_specialty_variables(nam08)
+nam09_filtered_gen <- create_specialty_variables(nam09)
+nam10_filtered_gen <- create_specialty_variables(nam10)
+nam11_filtered_gen <- create_specialty_variables(nam11)
+nam13_filtered_gen <- create_specialty_variables(nam13)
+nam14_filtered_gen <- create_specialty_variables(nam14)
+nam15_filtered_gen <- create_specialty_variables(nam15)
+nam16_filtered_gen <- create_specialty_variables(nam16)
+
+nam12_filtered_gen <- create_specialty_variables_nam12(nam12)
+```
+
+```{r race data management}
+###race
+race_list_9306_rename <- list(nam93_filtered_gen, nam94_filtered_gen, nam95_filtered_gen, nam96_filtered_gen, nam97_filtered_gen,
+                              nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                              nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen)
+
+replace_ethnic <- lapply(race_list_9306_rename , function(df) {
+  names(df) <- gsub("ETHNIC", "ETHUN", names(df))
+  names(df) <- gsub("RACE", "RACEUN", names(df))
+  return(df)
+})
+
+nam93_filtered_gen <- replace_ethnic[[1]]
+nam94_filtered_gen <- replace_ethnic[[2]]
+nam95_filtered_gen <- replace_ethnic[[3]]
+nam96_filtered_gen <- replace_ethnic[[4]]
+nam97_filtered_gen <- replace_ethnic[[5]]
+nam98_filtered_gen <- replace_ethnic[[6]]
+nam99_filtered_gen <- replace_ethnic[[7]]
+nam00_filtered_gen <- replace_ethnic[[8]]
+nam01_filtered_gen <- replace_ethnic[[9]]
+nam02_filtered_gen <- replace_ethnic[[10]]
+nam03_filtered_gen <- replace_ethnic[[11]]
+nam04_filtered_gen <- replace_ethnic[[12]]
+nam05_filtered_gen <- replace_ethnic[[13]]
+nam06_filtered_gen <- replace_ethnic[[14]]
+```
+
+```{r paytype data management}
+#payment type
+PAYTYPE_check_list<-list(nam93_filtered_gen, nam94_filtered_gen, nam95_filtered_gen, nam96_filtered_gen, nam97_filtered_gen,
+                         nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                         nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen,
+                         nam08_filtered_gen, nam09_filtered_gen, nam10_filtered_gen, nam11_filtered_gen, nam12_filtered_gen,
+                         nam13_filtered_gen, nam14_filtered_gen, nam15_filtered_gen, nam16_filtered_gen)
+
+check_variable_existence <- function(data_list, variable_name) {
+  missing_frames <- character(0)
+  for (i in seq_along(data_list)) {
+    df <- data_list[[i]]
+    if (!(variable_name %in% names(df))) {
+      missing_frames <- c(missing_frames, paste0("df", i))
+    }
+  }
+  if (length(missing_frames) > 0) {
+    cat("Variable is missing in the following data frames:", paste(missing_frames, collapse = ", "))
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
+check_variable_existence (PAYTYPE_check_list, "PAYTYPE") #missing PAYTYPE variable from df 1-4, (nam93 to nam96) AND df16-df24 (nam08 to nam16)
+check_variable_existence (PAYTYPE_check_list, "PAYTYPER") #missing PAYTYPE variable from df 1-15 (nam93 to nam07)
+
+#rename PAYTYPE variables from 1997 to 2007 as PAYTYPER
+PATYPER_list_rename<-list(nam97_filtered_gen, nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen,
+                          nam02_filtered_gen, nam03_filtered_gen, nam04_filtered_gen,
+                          nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen)
+
+replace_variable_names_list <- lapply(PATYPER_list_rename, function(df) {
+  names(df) <- gsub("PAYTYPE", "PAYTYPER", names(df))
+  return(df)
+})
+
+nam97_filtered_gen <- replace_variable_names_list[[1]]
+nam98_filtered_gen <- replace_variable_names_list[[2]]
+nam99_filtered_gen <- replace_variable_names_list[[3]]
+nam00_filtered_gen <- replace_variable_names_list[[4]]
+nam01_filtered_gen <- replace_variable_names_list[[5]]
+nam02_filtered_gen <- replace_variable_names_list[[6]]
+nam03_filtered_gen <- replace_variable_names_list[[7]]
+nam04_filtered_gen <- replace_variable_names_list[[8]]
+nam05_filtered_gen <- replace_variable_names_list[[9]]
+nam06_filtered_gen <- replace_variable_names_list[[10]]
+nam07_filtered_gen <- replace_variable_names_list[[11]]
+```
+
+```{r MSA data management}
+#checking if MSA variable exists in all data frames using a function
+MSA_check_list<-list(nam93_filtered_gen, nam94_filtered_gen, nam95_filtered_gen, nam96_filtered_gen, nam97_filtered_gen,
+                     nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                     nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen,
+                     nam08_filtered_gen, nam09_filtered_gen, nam10_filtered_gen, nam11_filtered_gen, nam12_filtered_gen,
+                     nam13_filtered_gen, nam14_filtered_gen, nam15_filtered_gen, nam16_filtered_gen)
+
+check_variable_existence <- function(data_list, variable_name) {
+  missing_frames <- character(0)  # Initialize an empty character vector to store missing data frame names
+  for (i in seq_along(data_list)) {
+    df <- data_list[[i]]
+    if (!(variable_name %in% names(df))) {
+      missing_frames <- c(missing_frames, paste0("df", i))
+    }
+  }
+  if (length(missing_frames) > 0) {
+    cat("Variable is missing in the following data frames:", paste(missing_frames, collapse = ", "))
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
+check_variable_existence (MSA_check_list, "MSA") #missing MSA variable from df 1-7, or nam93 to nam99
+check_variable_existence (MSA_check_list, "URBAN") #missing URBAN variable from df 8-24, or nam00 to nam16
+
+MSA_list_URBAN_rename<-list(nam93_filtered_gen, nam94_filtered_gen, nam95_filtered_gen, nam96_filtered_gen, nam97_filtered_gen,
+                            nam98_filtered_gen, nam99_filtered_gen)
+
+replace_variable_names_list <- lapply(MSA_list_URBAN_rename, function(df) {
+  names(df) <- gsub("URBAN", "MSA", names(df))
+  return(df)
+})
+
+nam93_filtered_gen <- replace_variable_names_list[[1]]
+nam94_filtered_gen <- replace_variable_names_list[[2]]
+nam95_filtered_gen <- replace_variable_names_list[[3]]
+nam96_filtered_gen <- replace_variable_names_list[[4]]
+nam97_filtered_gen <- replace_variable_names_list[[5]]
+nam98_filtered_gen <- replace_variable_names_list[[6]]
+nam99_filtered_gen <- replace_variable_names_list[[7]]
+
+MSA_check_list<-list(nam93_filtered_gen, nam94_filtered_gen, nam95_filtered_gen, nam96_filtered_gen, nam97_filtered_gen,
+                     nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                     nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen,
+                     nam08_filtered_gen, nam09_filtered_gen, nam10_filtered_gen, nam11_filtered_gen, nam12_filtered_gen,
+                     nam13_filtered_gen, nam14_filtered_gen, nam15_filtered_gen, nam16_filtered_gen)
+
+check_variable_existence (MSA_check_list, "MSA") #no more missing MSA variables
+```
+
+```{r pooling data frames & data management}
+#we will only be pooling data frames from 1997 onwards as the PAYTYPE variable is not present before, and trying
+#to recreate it is not possible due to coding inconsistencies across years
+data_frames_list_9716 <- list(nam97_filtered_gen,
+                              nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                              nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen,
+                              nam08_filtered_gen, nam09_filtered_gen, nam10_filtered_gen, nam11_filtered_gen, nam12_filtered_gen,
+                              nam13_filtered_gen, nam14_filtered_gen, nam15_filtered_gen, nam16_filtered_gen)
+
+
+check_variable_existence(data_frames_list_9716, "RACEUN") #true
+check_variable_existence(data_frames_list_9716, "ETHUN") #true
+check_variable_existence(data_frames_list_9716, "MSA") #true
+check_variable_existence(data_frames_list_9716, "PAYTYPER") #true
+check_variable_existence(data_frames_list_9716, "PEDGEN") #true
+check_variable_existence(data_frames_list_9716, "AGE") #true
+check_variable_existence(data_frames_list_9716, "CPSUM") #true
+check_variable_existence(data_frames_list_9716, "CSTRATM") #true
+check_variable_existence(data_frames_list_9716, "PATWT") #true
+
+#try to write a function for this?
+filter_variables <- c("RACEUN", "ETHUN", "MSA", "PAYTYPER", "PEDGEN", "AGE", "CPSUM", "CSTRATM", "PATWT", "PEDSPEC","NONPEDSPEC")
+nam97_filtered_gen <- nam97_filtered_gen[, filter_variables]
+nam98_filtered_gen <- nam98_filtered_gen[, filter_variables]
+nam99_filtered_gen <- nam99_filtered_gen[, filter_variables]
+nam00_filtered_gen <- nam00_filtered_gen[, filter_variables]
+nam01_filtered_gen <- nam01_filtered_gen[, filter_variables]
+nam02_filtered_gen <- nam02_filtered_gen[, filter_variables]
+nam03_filtered_gen <- nam03_filtered_gen[, filter_variables]
+nam04_filtered_gen <- nam04_filtered_gen[, filter_variables]
+nam05_filtered_gen <- nam05_filtered_gen[, filter_variables]
+nam06_filtered_gen <- nam06_filtered_gen[, filter_variables]
+nam07_filtered_gen <- nam07_filtered_gen[, filter_variables]
+nam08_filtered_gen <- nam08_filtered_gen[, filter_variables]
+nam09_filtered_gen <- nam09_filtered_gen[, filter_variables]
+nam10_filtered_gen <- nam10_filtered_gen[, filter_variables]
+nam11_filtered_gen <- nam11_filtered_gen[, filter_variables]
+nam12_filtered_gen <- nam12_filtered_gen[, filter_variables]
+nam13_filtered_gen <- nam13_filtered_gen[, filter_variables]
+nam14_filtered_gen <- nam14_filtered_gen[, filter_variables]
+nam15_filtered_gen <- nam15_filtered_gen[, filter_variables]
+nam16_filtered_gen <- nam16_filtered_gen[, filter_variables]
+
+#creating year variables
+nam97_filtered_gen$YEAR <- 1997
+nam98_filtered_gen$YEAR <- 1998
+nam99_filtered_gen$YEAR <- 1999
+nam00_filtered_gen$YEAR <- 2000
+nam01_filtered_gen$YEAR <- 2001
+nam02_filtered_gen$YEAR <- 2002
+nam03_filtered_gen$YEAR <- 2003
+nam04_filtered_gen$YEAR <- 2004
+nam05_filtered_gen$YEAR <- 2005
+nam06_filtered_gen$YEAR <- 2006
+nam07_filtered_gen$YEAR <- 2007
+nam08_filtered_gen$YEAR <- 2008
+nam09_filtered_gen$YEAR <- 2009
+nam10_filtered_gen$YEAR <- 2010
+nam11_filtered_gen$YEAR <- 2011
+nam12_filtered_gen$YEAR <- 2012
+nam13_filtered_gen$YEAR <- 2013
+nam14_filtered_gen$YEAR <- 2014
+nam15_filtered_gen$YEAR <- 2015
+nam16_filtered_gen$YEAR <- 2016
+
+#set data frames list to new values of namxx_filtered_gen
+data_frames_list_9716 <- list(nam97_filtered_gen,
+                              nam98_filtered_gen, nam99_filtered_gen, nam00_filtered_gen, nam01_filtered_gen, nam02_filtered_gen,
+                              nam03_filtered_gen, nam04_filtered_gen, nam05_filtered_gen, nam06_filtered_gen, nam07_filtered_gen,
+                              nam08_filtered_gen, nam09_filtered_gen, nam10_filtered_gen, nam11_filtered_gen, nam12_filtered_gen,
+                              nam13_filtered_gen, nam14_filtered_gen, nam15_filtered_gen, nam16_filtered_gen)
+
+#install.packages("data.table")
+library(data.table)
+#merge filtered_gens together
+regress_df_combined <- rbindlist(data_frames_list_9716) #97155 obs
+
+#for final data set: keep only observations where RACEUN == 1 (White) or 2 (Black)
+library(summarytools)
+freq(regress_df_combined$RACEUN)
+regress_df_combined <- regress_df_combined[regress_df_combined$RACEUN %in% c(1,2), ]
+freq(regress_df_combined$RACEUN) #72537 obs
+
+#for final data set: keep only observations where ETHUN == 1 (Hispanic) or 2 (Non-hispanic)
+freq(regress_df_combined$ETHUN)
+regress_df_combined <- regress_df_combined[regress_df_combined$ETHUN %in% c(1,2), ]
+freq(regress_df_combined$ETHUN) #65734 obs
+
+#for final data set: remove observations before 1997 (no PAYTYPER) (done)
+#keep only observations where PAYTYPER == 1 (Private insurance), 3 (Medicaid) or 5 (Self-pay)
+freq(regress_df_combined$PAYTYPER)
+regress_df_combined <- regress_df_combined[regress_df_combined$PAYTYPER %in% c(1,3,5), ]
+freq(regress_df_combined$PAYTYPER) #57986 obs
+
+#exclude paytyper == 5 (self-pay)
+regress_df_combined <- regress_df_combined[regress_df_combined$PAYTYPER %in% c(1,3), ]
+freq(regress_df_combined$PAYTYPER) #55392 obs
+
+freq(regress_df_combined$MSA) #only 1 and 2, no changes needed
+summary(regress_df_combined$AGE)
+freq(regress_df_combined$PEDGEN)
+#0:21899
+#1:33493
+
+#for final data set: remove observations where PEDSPEC or NONPEDSPEC == 1
+freq(regress_df_combined$PEDSPEC)
+freq(regress_df_combined$NONPEDSPEC)
+regress_df_combined <- regress_df_combined[regress_df_combined$PEDSPEC != 1, ] 
+#after remove PEDSPEC: 54213
+regress_df_combined <- regress_df_combined[regress_df_combined$NONPEDSPEC != 1, ] 
+#after remove NONPEDSPEC: 46538
+regress_df_combined <- subset(regress_df_combined, select = -c(PEDSPEC, NONPEDSPEC))
+
+# Function to print unique values of each variable
+print_unique_values <- function(data_frame) {
+for (col in names(data_frame)) {
+     if (toupper(col) %in% c("CPSUM", "CSTRATM", "PATWT")) {next
+    }
+    unique_values <- unique(data_frame[[col]])
+    cat("Variable:", col, "\n")
+    cat("Unique Values:", paste(unique_values, collapse = ", "), "\n\n")
+  }
+}
+print_unique_values(regress_df_combined)
+#convert PEDGEN to numeric
+
+#Note that as.numeric(variable) will turn 0 into 1 and 1 into 2,
+#so using as.numeric(variable)-1 we obtain the values 0 and 1.
+
+regress_df_combined$PEDGEN <- as.numeric (regress_df_combined$PEDGEN) - 1 ###!!!
+freq(regress_df_combined$PEDGEN)
+#1:13045 (PEDGEN==0 -> PEDGEN==1)
+#2:33493 (PEDGEN==1 -> PEDGEN==2)
+# total" 46538
+
+#convert dependent variables to factor, keep AGE as numeric
+regress_df_combined$RACEUN<- as.factor (regress_df_combined$RACEUN)
+regress_df_combined$ETHUN<- as.factor (regress_df_combined$ETHUN)
+regress_df_combined$ETHUN_dummy <- ifelse(regress_df_combined$ETHUN == "1", 1, 0) #reset reference level 1=hispanic, 0= non-hispanic
+freq(regress_df_combined$ETHUN) #1: 8753, #2:37785
+freq(regress_df_combined$ETHUN_dummy) #0: 40817, #1: 10754
+regress_df_combined$ETHUN_dummy<- as.factor (regress_df_combined$ETHUN_dummy)
+
+regress_df_combined$MSA<- as.factor (regress_df_combined$MSA)
+regress_df_combined$PAYTYPER<- as.factor (regress_df_combined$PAYTYPER)
+regress_df_combined$AGE <- as.numeric (regress_df_combined$AGE)
+regress_df_combined$YEAR <- as.factor (regress_df_combined$YEAR)
+summary(regress_df_combined$AGE)
+```
+
+```{r creating survey weights}
+library(survey)
+create_survey_design <- function(data) {
+  design <- svydesign(id = ~CPSUM,
+                      strata  = ~CSTRATM,
+                      weights = ~PATWT,
+                      nest    = TRUE,
+                      data    = data)
+  return(design)
+}
+regress_df_weighted<-create_survey_design(regress_df_combined)
+options(survey.adjust.domain.lonely=TRUE)
+options(survey.lonely.psu="adjust")
+```
+
+```{r weighted LPM}
+#install.packages("texreg")
+#install.packages("xtable")
+library(texreg)
+library(knitr)
+library(stargazer)
+library(xtable)
+lpm_regress_weighted_time<- svyglm(PEDGEN ~ RACEUN + ETHUN_dummy + MSA + PAYTYPER + YEAR, design = regress_df_weighted)
+screenreg(lpm_regress_weighted_time, custom.model.names = "LPM", inner.rule = "_", outer.rule = "=",groups = list("variables" = 1:5, "year" = 6:24))
+
+screenreg(lpm_regress_weighted_time, custom.model.names = "LPM", inner.rule = "_", outer.rule = "=",omit.coef=c('YEAR1998|YEAR1999|YEAR2000|YEAR2001|YEAR2002|YEAR2003|YEAR2004|YEAR2005|YEAR2006|YEAR2007|YEAR2008|YEAR2009|YEAR2010|YEAR2012|YEAR2013|YEAR2015|YEAR2016'),  groups = list("variables" = 1:5, "year (insignificant years omitted)" = 6:7), custom.coef.names=c('intercept', 'race: black', 'ethnicity: hispanic', 
+    'rural', 'medicaid', 'year: 2011','year: 2014'))
+
+#formula: pedgen = b0 + b1black + b2hisp + b3rural(non-MSA) + b4medicaid + b5(timevector)
+#base: white, nonhispanic, urban, private insurance
+
+#check for multicollinearity
+install.packages(c("vctrs","maxLik","miscTools","car","carData"))
+library(car)
+vif(lpm_regress_weighted_time) # max GVIF = 2
+
+#Percent correctly predicted: see Woolridge, p.590
+predicted_lpm <- predict(lpm_regress_weighted_time, type = "response")
+# the predict() function returns the probabilities of the positive outcome (i.e., the probability that PEDGEN is 1) for each observation in the survey
+binary_predictions_lpm <- ifelse(predicted_lpm >= 0.5, 1, 0)
+# convert the predicted probabilities obtained from the logistic regression model into binary predictions, where each prediction is either 0 or 1
+actual_outcomes_lpm <- regress_df_weighted$variables$PEDGEN
+num_correct_lpm <- sum((binary_predictions_lpm== actual_outcomes_lpm) * weights(regress_df_weighted))
+# This step performs element-wise multiplication between the logical vector obtained from the previous step and the 
+# survey weights from regress_df_weighted. When multiplying a logical vector by a numeric vector (the survey weights), 
+# the TRUE values are treated as 1, and the FALSE values are treated as 0. 
+# Therefore, this operation effectively assigns the survey weights only to the correctly predicted outcomes, 
+# while leaving the incorrect predictions with a weight of 0.
+total_observations_lpm <- sum(weights(regress_df_weighted))
+pct_correctly_predicted_lpm <- (num_correct_lpm / total_observations_lpm) * 100
+print(pct_correctly_predicted_lpm)
+### %CP: 76.621%
+
+###R squared : ???????
+```
+
+```{r weighted logit}
+logit_regress_weighted_time <- svyglm(PEDGEN ~ RACEUN + ETHUN_dummy + MSA + PAYTYPER + YEAR, 
+                                      design = regress_df_weighted, 
+                                      family = quasibinomial(link = "logit"))
+#warning: https://stackoverflow.com/questions/12953045/warning-non-integer-successes-in-a-binomial-glm-survey-packages
+screenreg(logit_regress_weighted_time, custom.model.names = "logit", inner.rule = "_", outer.rule ="=", groups = list("variables" = 1:5, "year" = 6:24))
+#https://search.r-project.org/CRAN/refmans/texreg/html/screenreg.html
+#summary(logit_regress_weighted_time)
+install.packages("margins")
+library(margins)
+logit_marginal_effects <- margins(logit_regress_weighted_time, design = regress_df_weighted)
+screenreg(logit_marginal_effects, custom.model.names = "logit AME", inner.rule = "_", outer.rule ="=", groups = list("variables" = 1:4, "year" = 5:23))
+#summary(logit_marginal_effects) 
+vif(logit_regress_weighted_time) #low GVIF (<2)
+#https://stats.stackexchange.com/questions/541024/reporting-average-marginal-effects-of-a-survey-weighted-logit-model-with-r
+
+#Percent correctly predicted: see Woolridge, p.590
+predicted_logit <- predict(logit_regress_weighted_time, type = "response")
+binary_predictions_logit <- ifelse(predicted_logit >= 0.5, 1, 0)
+actual_outcomes_logit <- regress_df_weighted$variables$PEDGEN
+num_correct_logit <- sum((binary_predictions_logit== actual_outcomes_logit) * weights(regress_df_weighted))
+total_observations_logit <- sum(weights(regress_df_weighted))
+pct_correctly_predicted_logit <- (num_correct_logit / total_observations_logit) * 100
+print(pct_correctly_predicted_logit)
+### %CP for logit: 76.606% (same as probit?)
+
+#Pseudo R squared for logit
+#https://rdrr.io/rforge/survey/man/psrsq.html
+psrsq(logit_regress_weighted_time, method = "Cox-Snell")
+#0.049
+```
+
+```{r weighted probit}
+probit_regress_weighted_time <- svyglm(PEDGEN ~ RACEUN + ETHUN_dummy + MSA + PAYTYPER + YEAR, 
+                                       design = regress_df_weighted, 
+                                       family = quasibinomial(link = "probit"))
+#summary(probit_regress_weighted_time)
+screenreg(probit_regress_weighted_time, custom.model.names = "probit", inner.rule = "_", outer.rule ="=", groups = list("variables" = 1:5, "year" = 6:24))
+library(margins)
+probit_marginal_effects <- margins(probit_regress_weighted_time, design = regress_df_weighted)
+screenreg(probit_marginal_effects, custom.model.names = "probit AME", inner.rule = "_", outer.rule ="=", groups = list("variables" = 1:4, "year" = 5:23))
+vif(probit_regress_weighted_time) # GVIF = 2
+
+#Percent correctly predicted: see Woolridge, p.590
+predicted_probit <- predict(probit_regress_weighted_time, type = "response")
+binary_predictions_probit <- ifelse(predicted_probit >= 0.5, 1, 0)
+actual_outcomes_probit <- regress_df_weighted$variables$PEDGEN
+num_correct_probit <- sum((binary_predictions_probit== actual_outcomes_probit) * weights(regress_df_weighted))
+total_observations_probit <- sum(weights(regress_df_weighted))
+pct_correctly_predicted_probit <- (num_correct_probit / total_observations_probit) * 100
+print(pct_correctly_predicted_probit)
+### %CP for probit: 76.607% 
+
+#Pseudo r squared for probit
+psrsq(probit_regress_weighted_time, method = "Cox-Snell")
+#0.0487
+```
+
+```{r combined output}
+screenreg(list(lpm_regress_weighted_time,logit_regress_weighted_time, probit_regress_weighted_time), custom.model.names = c("LPM","logit", "probit"), inner.rule = "_", outer.rule ="=", groups = list("variables" = 1:5, "year" = 6:24),custom.coef.names=c('intercept', 'race: black', 'ethnicity: hispanic', 
+    'rural', 'medicaid', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'))
+
+screenreg(list(lpm_regress_weighted_time,logit_regress_weighted_time, probit_regress_weighted_time), custom.model.names = c("LPM", "logit", "probit"), inner.rule = "_", outer.rule= "=",omit.coef=c('YEAR1998|YEAR1999|YEAR2000|YEAR2001|YEAR2002|YEAR2003|YEAR2004|YEAR2005|YEAR2006|YEAR2007|YEAR2008|YEAR2009|YEAR2010|YEAR2012|YEAR2013|YEAR2015|YEAR2016'),  groups = list("variables" = 1:5, "Years (insignificant years omitted)" = 6:7), custom.coef.names=c('intercept','race: Black', 'ethnicity: Hispanic', 'rural', 'medicaid', 'year: 2011','year: 2014'))
+
+
+#AME
+screenreg(list(logit_marginal_effects, probit_marginal_effects), custom.model.names = c("logit AME", "probit AME"), inner.rule = "_", outer.rule ="=", omit.coef=c('YEAR1998|YEAR1999|YEAR2000|YEAR2001|YEAR2002|YEAR2003|YEAR2004|YEAR2005|YEAR2006|YEAR2007|YEAR2008|YEAR2009|YEAR2010|YEAR2012|YEAR2013|YEAR2015|YEAR2016'), groups = list("variables" = 1:4, "Years (insignificant years omitted)" = 5:6),
+custom.coef.names=c('ethnicity: Hispanic', 'rural', 'medicaid', 'race: Black', 'year: 2011','year: 2014'))
+```
+
+
